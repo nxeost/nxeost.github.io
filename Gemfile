@@ -1,1 +1,0 @@
-sgem "minimal-mistakes-jekyll"
