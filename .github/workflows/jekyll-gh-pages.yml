@@ -1,0 +1,81 @@
+# Custom GitHub Pages deployment workflow with retry logic.
+# Replaces the default "pages build and deployment" dynamic workflow.
+# Retries the deploy step up to 3 times (with 3-minute waits) to handle
+# transient "Deployment failed, try again later." errors from the Pages API.
+
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Seconds to wait between deployment retry attempts.
+env:
+  DEPLOY_RETRY_DELAY: 180
+
+# Use the same concurrency group as the default Pages workflow so they
+# don't race each other. cancel-in-progress: false keeps queued runs
+# so the retry logic below can finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/
+    steps:
+      - name: Deploy (attempt 1)
+        id: attempt1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Wait before retry
+        if: steps.attempt1.outcome != 'success'
+        run: |
+          echo "Deployment attempt 1 failed. Waiting ${{ env.DEPLOY_RETRY_DELAY }} seconds before retry..."
+          sleep ${{ env.DEPLOY_RETRY_DELAY }}
+
+      - name: Deploy (attempt 2)
+        id: attempt2
+        if: steps.attempt1.outcome != 'success'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Wait before final retry
+        if: steps.attempt1.outcome != 'success' && steps.attempt2.outcome != 'success'
+        run: |
+          echo "Deployment attempt 2 failed. Waiting ${{ env.DEPLOY_RETRY_DELAY }} seconds before final retry..."
+          sleep ${{ env.DEPLOY_RETRY_DELAY }}
+
+      - name: Deploy (final attempt)
+        if: steps.attempt1.outcome != 'success' && steps.attempt2.outcome != 'success'
+        uses: actions/deploy-pages@v5
