@@ -16,6 +16,10 @@ permissions:
   pages: write
   id-token: write
 
+# Seconds to wait between deployment retry attempts.
+env:
+  DEPLOY_RETRY_DELAY: 180
+
 # Use the same concurrency group as the default Pages workflow so they
 # don't race each other. cancel-in-progress: false keeps queued runs
 # so the retry logic below can finish.
@@ -47,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: https://nxeost.github.io/
+      url: https://${{ github.repository_owner }}.github.io/
     steps:
       - name: Deploy (attempt 1)
         id: attempt1
@@ -57,8 +61,8 @@ jobs:
       - name: Wait before retry
         if: steps.attempt1.outcome != 'success'
         run: |
-          echo "Deployment attempt 1 failed. Waiting 3 minutes before retry..."
-          sleep 180
+          echo "Deployment attempt 1 failed. Waiting ${{ env.DEPLOY_RETRY_DELAY }} seconds before retry..."
+          sleep ${{ env.DEPLOY_RETRY_DELAY }}
 
       - name: Deploy (attempt 2)
         id: attempt2
@@ -69,8 +73,8 @@ jobs:
       - name: Wait before final retry
         if: steps.attempt1.outcome != 'success' && steps.attempt2.outcome != 'success'
         run: |
-          echo "Deployment attempt 2 failed. Waiting 3 more minutes before final retry..."
-          sleep 180
+          echo "Deployment attempt 2 failed. Waiting ${{ env.DEPLOY_RETRY_DELAY }} seconds before final retry..."
+          sleep ${{ env.DEPLOY_RETRY_DELAY }}
 
       - name: Deploy (final attempt)
         if: steps.attempt1.outcome != 'success' && steps.attempt2.outcome != 'success'
